@@ -10,9 +10,10 @@
     # LInes 154 to 192: Updated Move function: converted UL & UR to rad/s, adjusted new c2c calculation, returned distance/step and linear & angular velocities
     # Lines 93 to 121: commented out input functions for faster testing, using line 131-133. To use input prompts, be sure to comment-out lines 131-133
     # Overall: converted the measurments to from mm to cm to reduce the number of points to visit. Also rearrange other parts of the code. 
-# Things to try
-    # try different treshold, instead of 0.5, 0.5, 30. 
-    # see if professor gave additional hints in lecture 7, 8 or 9
+# 04/06/24 maybe after 7h30pm
+    # line 38 & 40: Added separate structures (step_node_map & step_info) to store the linear velocity, thetat-dot (omega), and distance traveled at each node.
+    # Lines 350- 395: modified main function to draw display and show animation of robot motion
+    # Line 316 - 332: edited draw_curve function to avoid plotting curves that are in the obstacle space
     
 #!/usr/bin/env python3
 import pygame, sys, math, time
@@ -34,9 +35,9 @@ open_list = []  # to be used for heapq for nodes in the open-list
 visited_matrix_idx = set() #set used to store the index of each visited node if they were added to a visted-node-matrix (see proj3 part 1 pdf page 14). replaces the closed-list from proj2
 prnt_node_map = {} # dictionary (key=node, val=parent) for all the nodes visited mapped to their parents to be used for backtracking
 lowest_c2c_map ={} # dictionary (key=node, val=c2c) to keep track of the nodes and their cost, used to ensure only lowest cost in open-list
-step_info_map = {} # dictionary (key = node, val= (distance_covered, linear_velocity, angular_velocity) to keep track of the nodes, traveled distance, linear & angular velocities
+step_info_map = {} # dictionary (key = node, val= (linear_velocity, angular_velocity, distance_covered)) to keep track of the nodes, traveled distance, linear & angular velocities
 path = deque()     # deque used for storing nodes after ordering them using backtracking
-step_info = deque() # deque for storing distance_covered, linear_velocity, angular_velocity of each node for the optimal path
+step_info = deque() # deque for storing linear_velocity, angular_velocity & distance_covered of each node for the optimal path
 thr_x, thr_y, thr_theta = 0.5, 0.5, 30  # x, y, theta thresholds to avoid visiting too many close points (see page 14 in project 3 part1 description pdf)        
 robot_step = 1
 
@@ -111,7 +112,8 @@ def A_star():
             print('The chosen start point is in the obstacle space or too close to the border or out of the display dimensions, choose another one.')
         else:
             start_pt_trigger = 0
-
+    global goal_x
+    global goal_y
     while goal_pt_trigger == 1:
         try:
             goal_x, goalb_y = float(input('Enter goal point x- cordinate in mm: '))/10, float(input('Enter goal point y-cordinate in mm: '))
@@ -150,6 +152,7 @@ def A_star():
             yield start
             start += step
 
+    global obstacle_pts
     # Use nested for loops to sweep accross all points in the layout, with a 0.5 interval, then add the points that are in the obstacle space in a set.
     obstacle_pts = {(x,y) for x in range_float(0, WINDOW_WIDTH, 0.5) for y in range_float(0, WINDOW_HEIGHT, 0.5) if IsInObstacle(x,y)}
     print(f'number of obstacle points {len(obstacle_pts)} \n')   # only for debugging
@@ -196,7 +199,7 @@ def A_star():
     # Starting cost-to-come and parent node
     cost2c_start, parent_node = 0.0, None                                                                                  
     cost_2_go_start = euclidean_dist(start_x, start_y, goal_x, goal_y)
-    dist_start, vel_start, theta_dot_start = 0, 0, 0
+    vel_start, theta_dot_start, dist_start = 0, 0, 0
     # creating tuple with cost to come and coordinate values (x,y, theta) 
     total_cost_start = cost2c_start + cost_2_go_start
     n1 = (total_cost_start, cost2c_start,(start_x, start_y, start_theta))  
@@ -206,7 +209,7 @@ def A_star():
     # Update lowest cost and parent node maps with starting point info
     lowest_c2c_map[(start_x, start_y, start_theta)] = cost2c_start
     prnt_node_map[(start_x, start_y, start_theta)] = parent_node
-    step_info_map[(start_x, start_y, start_theta)] = (dist_start, vel_start, theta_dot_start)
+    step_info_map[(start_x, start_y, start_theta)] = (vel_start, theta_dot_start, dist_start)
 
     # a_star while loop to generate new nodes
     while len(open_list) > 0:
@@ -225,7 +228,7 @@ def A_star():
             # Keep backtracking until start node reached
             while curnt_node is not None:
                 path.appendleft(curnt_node)  # Add the current node to the pathits
-                step_info.appendleft(step_info_map[curnt_node]) # Add the node's distance traveled per step, linear-velocity & theta-dot (or omega)
+                step_info.appendleft(step_info_map[curnt_node]) # Add the node's linear-velocity & theta-dot (or omega), distance traveled per step
                 curnt_node = prnt_node_map.get(curnt_node)  # Move to the parent node to now search for its parent
             print('Path found!')
             print(f'size of path deque: {len(path)}')  # only for trouble-shotting
@@ -250,7 +253,7 @@ def A_star():
                     n_tc = n_c2c + n_c2g
                     lowest_c2c_map[(nx, ny, n_theta)] = n_c2c
                     prnt_node_map[(nx, ny, n_theta)] = (curnt_x, curnt_y, curnt_theta)
-                    step_info_map[(nx, ny, n_theta)] = (n_dist, n_vel, n_theta_dot)
+                    step_info_map[(nx, ny, n_theta)] = (n_vel, n_theta_dot, n_dist)
                     hq.heappush(open_list, (n_tc, n_c2c, (nx, ny, n_theta)))
         # Stop if the algorithm can't find a solution
         if len(open_list)== 0:
@@ -267,7 +270,7 @@ RED = (255, 30, 70)
 YELLOW = (255, 255, 0)
 GREEN = (0, 100, 0)
 WHITE = (255, 255, 255)
-PURPLE = (127, 0, 255)
+PURPLE = (93, 63, 211)
 # LIGHT_PURPLE = rgb(207, 159, 255), IRIS = (93, 63, 211), VIOLET = rgb(127, 0, 255)
 
 # Game Setup
@@ -308,47 +311,6 @@ def draw_environment(WINDOW):
     pygame.draw.circle(WINDOW, RED, (center_x,center_y), circle_r)
     pygame.display.update()
 
-# def draw_explored_nodes(window, parent_node_map,nodes_per_frame=80):
-#     """ Draws the vectors using the parent_node_map dictionary as input"""
-#     vectors_list= list(parent_node_map.keys())
-#     step_info_list = list(step_info_map.values())
-#     points = [(vectors_list[0][0], vectors_list[0][1])]
-#     init_angle_start = math.radians(vectors_list[0][2])
-#     for i in range(0, len(vectors_list), nodes_per_frame):
-#         for vector in vectors_list[i:i+nodes_per_frame]:
-#             if vector == list(parent_node_map.keys())[0]:
-#                 continue
-
-#             # Start point, angle (in radians), and arc length
-#             start_point = (vector[0], vector[1])
-#             theta = math.radians(vector[2])  # Angle in radians
-#             arc_length = step_info_map[vector][0] # Length of the arc
-
-#             # Determine curvature of the arc
-#           
-#             radius = arc_length  # for desired curvature
-#             # angle_start = math.radians(0)  # Starting angle
-#             angle_start = init_angle_start
-#             angle_end = theta  # Ending angle
-
-#             # Calculate points along the arc
-#             num_points = 20
-#             # points = []
-#             for i in range(num_points + 1):
-#                 angle = angle_start + (angle_end - angle_start) * (i / num_points)
-#                 x = start_point[0] + radius * math.cos(angle)
-#                 y = start_point[1] + radius * math.sin(angle)
-#                 points.append((x, y))
-#             # Draw
-#             for j in range(len(points) - 1):
-#                 pygame.draw.line(window, GREEN, points[j], points[j+1], 2)
-#             init_angle_start = angle_end
-#             points = [points[-1]]
-#             # Update display
-#             # pygame.display.update()
-#         pygame.display.update()
-#         pygame.time.delay(1)  # delay to adjust animation speed
-
 def draw_curve(surface, Xi, Yi, Thetai, UL, UR, color):
     t = 0
     dt = 0.1
@@ -363,9 +325,21 @@ def draw_curve(surface, Xi, Yi, Thetai, UL, UR, color):
         Xn += 0.5 * wheel_r * (UL + UR) * math.cos(Thetan) * dt
         Yn += 0.5 * wheel_r * (UL + UR) * math.sin(Thetan) * dt
         Thetan += (wheel_r / wheel_dist) * (UR - UL) * dt
+        if (round(Xn), round(Yn)) in obstacle_pts:
+            return False
         points.append((int(Xn), int(Yn)))
     pygame.draw.lines(surface, color, False, points, 1)  # Draw on the curve surface
+    return True
 
+def animate_optimal_path(window, path):  # needs to be updated to draw curves from actions using draw_curve_function. 
+    """Function to animate moving from start to goal using the optimal path"""
+    for node in path:
+        pygame.draw.circle(window, WHITE, (int(node[0]), int(node[1])), 2)
+        
+        pygame.display.update()
+        pygame.time.delay(4)  # delay to adjust animation speed
+    # pygame.draw.lines(window, WHITE, False, path, 2)
+   
 #### MAIN FUNCTION (start algorithm, then animates) ###############
 def main():
     """ Main function to start and animate the algorithm search"""
@@ -376,20 +350,44 @@ def main():
 
     # if optimal path is found, create animation
     if len(path) > 0:
+        animation_strt_time = time.time()
         # Create Pygame window
         WINDOW = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         pygame.display.set_caption("Robot Path Animation")
-
+        draw_environment(WINDOW)
+        pygame.draw.circle(WINDOW, WHITE, (int(goal_x), int(goal_y)), int(round(1.5)))
         # Create a separate surface for drawing curves to avoid flickering effect if it curves were drawn directly.
         curve_surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA) # pygam.srcalpha keeps the surface transparent
+        nodes_list = list(prnt_node_map.keys())
+        if 0<len(nodes_list)<15000:
+            nodes_per_frame = int(60000/5)
+            dly = 2
+        elif 15000<len(nodes_list)<30000:
+            nodes_per_frame = int(60000/4)
+            dly = 1
+        elif 30000< len(nodes_list) < 45000:
+            nodes_per_frame  = int(60000/2)
+            dly =1
+        elif 45000< len(nodes_list) < 60000: 
+            nodes_per_frame = 45000
+            dly = 0
+        if len(nodes_list) >= 60000:
+            nodes_per_frame = 60000
+            dly = 0
+        # nodes_per_frame = 60000 # might need to be adjusted
+        for i in range(0, len(nodes_list), nodes_per_frame):
+            for node in nodes_list[i:i+nodes_per_frame]:
+                for action in actions:
+                    if draw_curve(curve_surface, node[0], node[1], node[2], action[0], action[1], GREEN):
+                        WINDOW.blit(curve_surface, (0, 0))  # Blit the curve surface onto the main window
+                        pygame.display.update()
+                        pygame.time.delay(dly)  # Delay between each curve
 
-        for node in list(prnt_node_map.keys()):
-            draw_environment(WINDOW)
-            for action in actions:
-                draw_curve(curve_surface, node[0], node[1], node[2], action[0], action[1], PURPLE)
-                WINDOW.blit(curve_surface, (0, 0))  # Blit the curve surface onto the main window
-                pygame.display.update()
-                pygame.time.delay(50)  # Delay between each curve
+        animate_optimal_path(curve_surface, path)
+        animation_end_time = time.time()
+        animation_run_time = animation_end_time - animation_strt_time
+        print(f"Animation Execution Time: {animation_run_time} seconds, \n")
+        print(f'Total execution time of search algorithm & animation {a_star_duration+animation_run_time} seconds')
         while True:
             for event in pygame.event.get():
                 if event.type == QUIT:
