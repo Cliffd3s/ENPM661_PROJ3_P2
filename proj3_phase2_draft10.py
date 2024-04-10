@@ -47,11 +47,11 @@ def nrm_angle(angle):
 clrnc_trigger = 1
 while clrnc_trigger == 1:
     try:
-        clrnc = float(input("Enter a value between 0 and 5 (including 0 & 5) for the wall & obstacle clearance in mm: "))/10
+        clrnc = float(input("Enter a value in mm between 0 and 28 (including 0 & 28) for the wall & obstacle clearance: "))/10
     except:
         print('you did not enter a number, please enter only numbers')
         continue
-    if clrnc <0 or clrnc >5:
+    if clrnc <0 or clrnc >28:
         print('The value you entered is outside the acceptable range, try again')
         continue
     else:
@@ -308,54 +308,46 @@ def draw_environment(WINDOW):
     pygame.draw.circle(WINDOW, RED, (center_x,center_y), circle_r)
     pygame.display.update()
 
-def plot_curve(Xi,Yi,Thetai,UL,UR, ax):
-    # robot_r = 220 # 220 mm 
-    # wheel_r = 66/2 # wheel diameter = 66
-    # wheel_dist = 287 # 287 mm, distance from a line through the middle of one wheel to another line through the middle of the other wheel
-    t = 0
-    dt = 0.1
-    Xn=Xi
-    Yn=Yi
-    Thetan = math.radians(Thetai)
-    UL = UL*2*math.pi/60 # convert rpm to rad/s
-    UR = UR*2*math.pi/60 # convert rpm to rad/s
-    while t<1:
-        t = t + dt
-        Xs = Xn
-        Ys = Yn
-        # Xn += 0.5*r * (UL + UR) * math.cos(Thetan) * dt
-        # Yn += 0.5*r * (UL + UR) * math.sin(Thetan) * dt
-        Xn += 0.5*wheel_r * (UL + UR) * math.cos(Thetan) * dt
-        Yn += 0.5*wheel_r * (UL + UR) * math.sin(Thetan) * dt
-        # Thetan += (r / L) * (UR - UL) * dt
-        Thetan += (wheel_r/wheel_dist) * (UR - UL) * dt
-        ax.plot([Xs, Xn], [Ys, Yn], color="blue")
-        # D=D+ math.sqrt(math.pow((0.5*r * (UL + UR) * math.cos(Thetan) * dt),2)+math.pow((0.5*r * (UL + UR) * math.sin(Thetan) * dt),2))
-        # D+= math.sqrt((0.5*wheel_r * (UL + UR) * math.cos(Thetan) * dt)**2 + (0.5*wheel_r * (UL + UR) * math.sin(Thetan) * dt)**2)
-    # Thetan = 180 * (Thetan) / 3.14
-    Thetan = math.degrees(Thetan)
-    return Xn, Yn, nrm_angle(Thetan)
+# def draw_explored_nodes(window, parent_node_map,nodes_per_frame=80):
+#     """ Draws the vectors using the parent_node_map dictionary as input"""
+#     vectors_list= list(parent_node_map.keys())
+#     step_info_list = list(step_info_map.values())
+#     points = [(vectors_list[0][0], vectors_list[0][1])]
+#     init_angle_start = math.radians(vectors_list[0][2])
+#     for i in range(0, len(vectors_list), nodes_per_frame):
+#         for vector in vectors_list[i:i+nodes_per_frame]:
+#             if vector == list(parent_node_map.keys())[0]:
+#                 continue
 
-# def draw_curve(WINDOW, Xi, Yi, Thetai, UL, UR, color):
-#     t = 0
-#     dt = 0.1
-#     Xn = Xi
-#     Yn = Yi
-#     Thetan = math.radians(Thetai)
-#     UL = UL * 2 * math.pi / 60  # convert rpm to rad/s
-#     UR = UR * 2 * math.pi / 60  # convert rpm to rad/s
-#     points = []
-#     while t < 1:
-#         t = t + dt
-#         Xs = Xn
-#         Ys = Yn
-#         Xn += 0.5 * wheel_r * (UL + UR) * math.cos(Thetan) * dt
-#         Yn += 0.5 * wheel_r * (UL + UR) * math.sin(Thetan) * dt
-#         Thetan += (wheel_r / wheel_dist) * (UR - UL) * dt
-#         # points.append((int(Xn), int(WINDOW_HEIGHT - Yn)))
-#         points.append((int(Xn), int(Yn)))
-#     pygame.draw.lines(WINDOW, color, False, points, 1)
-#     pygame.display.update()
+#             # Start point, angle (in radians), and arc length
+#             start_point = (vector[0], vector[1])
+#             theta = math.radians(vector[2])  # Angle in radians
+#             arc_length = step_info_map[vector][0] # Length of the arc
+
+#             # Determine curvature of the arc
+#           
+#             radius = arc_length  # for desired curvature
+#             # angle_start = math.radians(0)  # Starting angle
+#             angle_start = init_angle_start
+#             angle_end = theta  # Ending angle
+
+#             # Calculate points along the arc
+#             num_points = 20
+#             # points = []
+#             for i in range(num_points + 1):
+#                 angle = angle_start + (angle_end - angle_start) * (i / num_points)
+#                 x = start_point[0] + radius * math.cos(angle)
+#                 y = start_point[1] + radius * math.sin(angle)
+#                 points.append((x, y))
+#             # Draw
+#             for j in range(len(points) - 1):
+#                 pygame.draw.line(window, GREEN, points[j], points[j+1], 2)
+#             init_angle_start = angle_end
+#             points = [points[-1]]
+#             # Update display
+#             # pygame.display.update()
+#         pygame.display.update()
+#         pygame.time.delay(1)  # delay to adjust animation speed
 
 def draw_curve(surface, Xi, Yi, Thetai, UL, UR, color):
     t = 0
@@ -368,8 +360,6 @@ def draw_curve(surface, Xi, Yi, Thetai, UL, UR, color):
     points = []
     while t < 1:
         t = t + dt
-        # Xs = Xn
-        # Ys = Yn
         Xn += 0.5 * wheel_r * (UL + UR) * math.cos(Thetan) * dt
         Yn += 0.5 * wheel_r * (UL + UR) * math.sin(Thetan) * dt
         Thetan += (wheel_r / wheel_dist) * (UR - UL) * dt
@@ -390,8 +380,8 @@ def main():
         WINDOW = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         pygame.display.set_caption("Robot Path Animation")
 
-        # Create a separate surface for drawing curves
-        curve_surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+        # Create a separate surface for drawing curves to avoid flickering effect if it curves were drawn directly.
+        curve_surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA) # pygam.srcalpha keeps the surface transparent
 
         for node in list(prnt_node_map.keys()):
             draw_environment(WINDOW)
@@ -408,39 +398,6 @@ def main():
             fpsClock.tick(FPS)
     else:
         print('The algorithm could not find an optimal path')
-# def main():
-#     """ Main function to start and animate the algorithm search"""
-   
-#     a_star_duration = A_star()
-
-#     print(f"A* Algorithm Execution Time: {a_star_duration} seconds")
-
-#     # if optimal path is found, create animation
-#     if len(path) > 0: 
-#         animation_strt_time = time.time()  
-        
-#         # Create a figure and axes object
-#         fig, ax = plt.subplots()
-
-#         for nodes in list(prnt_node_map.keys()):
-#             for action in actions:
-#                 plot_curve(nodes[0], nodes[1], nodes[2], action[0], action[1], ax)  # Pass ax as an argument to plot_curve
-
-#         animation_end_time = time.time()
-#         animation_run_time = animation_end_time - animation_strt_time
-#         print(f"Animation Execution Time: {animation_run_time} seconds, \n")
-#         print(f'Total execution time of search algorithm & animation {a_star_duration+animation_run_time} seconds')
-
-#         # Use the ax object for plotting
-#         ax.grid()
-#         ax.set_aspect('equal')
-#         ax.set_xlim(-50, 175)
-#         ax.set_ylim(-50, 175)
-#         ax.set_title('How to plot a vector in matplotlib ?', fontsize=10)
-
-#         plt.show()
-#     else:
-#         print('The algorithm could not find an optimal path')
 
 if __name__ == "__main__":
     main()
