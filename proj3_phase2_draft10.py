@@ -10,10 +10,12 @@
     # LInes 154 to 192: Updated Move function: converted UL & UR to rad/s, adjusted new c2c calculation, returned distance/step and linear & angular velocities
     # Lines 93 to 121: commented out input functions for faster testing, using line 131-133. To use input prompts, be sure to comment-out lines 131-133
     # Overall: converted the measurments to from mm to cm to reduce the number of points to visit. Also rearrange other parts of the code. 
-# 04/06/24 maybe after 7h30pm
-    # line 38 & 40: Added separate structures (step_node_map & step_info) to store the linear velocity, thetat-dot (omega), and distance traveled at each node.
+# 04/05/24, Maybe after 7hr30pm
     # Lines 350- 395: modified main function to draw display and show animation of robot motion
     # Line 316 - 332: edited draw_curve function to avoid plotting curves that are in the obstacle space
+# Things to try
+    # try different treshold, instead of 0.5, 0.5, 30. 
+    # see if professor gave additional hints in lecture 7, 8 or 9
     
 #!/usr/bin/env python3
 import pygame, sys, math, time
@@ -35,9 +37,11 @@ open_list = []  # to be used for heapq for nodes in the open-list
 visited_matrix_idx = set() #set used to store the index of each visited node if they were added to a visted-node-matrix (see proj3 part 1 pdf page 14). replaces the closed-list from proj2
 prnt_node_map = {} # dictionary (key=node, val=parent) for all the nodes visited mapped to their parents to be used for backtracking
 lowest_c2c_map ={} # dictionary (key=node, val=c2c) to keep track of the nodes and their cost, used to ensure only lowest cost in open-list
-step_info_map = {} # dictionary (key = node, val= (linear_velocity, angular_velocity, distance_covered)) to keep track of the nodes, traveled distance, linear & angular velocities
+step_info_map = {} # dictionary (key = node, val= (distance_covered, linear_velocity, angular_velocity) to keep track of the nodes, traveled distance, linear & angular velocities
+node_action_map = {} # dictionary (key= node, value= (rpm_l,rpm_r)) to keep track of action used be each node. Useful for drawing final path curve
 path = deque()     # deque used for storing nodes after ordering them using backtracking
-step_info = deque() # deque for storing linear_velocity, angular_velocity & distance_covered of each node for the optimal path
+step_info = deque() # deque for storing distance_covered, linear_velocity, angular_velocity of each node for the optimal path
+node_action_rpms = deque() # deque for storing the (RPM_L, RPM_R) actions performed to get to each node in an ordered way. Used for drawing final path curve. 
 thr_x, thr_y, thr_theta = 0.5, 0.5, 30  # x, y, theta thresholds to avoid visiting too many close points (see page 14 in project 3 part1 description pdf)        
 robot_step = 1
 
@@ -131,7 +135,7 @@ def A_star():
 
     while wheel_rpm_trigger == 1:
         try:
-            RPM_L, RPM_R = float(input('Enter the rpm for the left-wheel: ')), float(input('Enter the rpm for the right-wheel: '))
+            RPM_L, RPM_R = float(input('Enter an rpm less than 76 for the left-wheel: ')), float(input('Enter an rpm less than 76 for the right-wheel: '))
         except:
             print('you did not enter a number, please enter only numbers')
             continue
@@ -199,7 +203,7 @@ def A_star():
     # Starting cost-to-come and parent node
     cost2c_start, parent_node = 0.0, None                                                                                  
     cost_2_go_start = euclidean_dist(start_x, start_y, goal_x, goal_y)
-    vel_start, theta_dot_start, dist_start = 0, 0, 0
+    vel_start, theta_dot_start, dist_start  = 0, 0, 0
     # creating tuple with cost to come and coordinate values (x,y, theta) 
     total_cost_start = cost2c_start + cost_2_go_start
     n1 = (total_cost_start, cost2c_start,(start_x, start_y, start_theta))  
@@ -210,6 +214,7 @@ def A_star():
     lowest_c2c_map[(start_x, start_y, start_theta)] = cost2c_start
     prnt_node_map[(start_x, start_y, start_theta)] = parent_node
     step_info_map[(start_x, start_y, start_theta)] = (vel_start, theta_dot_start, dist_start)
+    node_action_map[(start_x, start_y, start_theta)] =(0,0)
 
     # a_star while loop to generate new nodes
     while len(open_list) > 0:
@@ -228,7 +233,8 @@ def A_star():
             # Keep backtracking until start node reached
             while curnt_node is not None:
                 path.appendleft(curnt_node)  # Add the current node to the pathits
-                step_info.appendleft(step_info_map[curnt_node]) # Add the node's linear-velocity & theta-dot (or omega), distance traveled per step
+                step_info.appendleft(step_info_map[curnt_node]) # Add the node's distance traveled per step, linear-velocity & theta-dot (or omega)
+                node_action_rpms.appendleft(node_action_map[curnt_node])
                 curnt_node = prnt_node_map.get(curnt_node)  # Move to the parent node to now search for its parent
             print('Path found!')
             print(f'size of path deque: {len(path)}')  # only for trouble-shotting
@@ -254,6 +260,7 @@ def A_star():
                     lowest_c2c_map[(nx, ny, n_theta)] = n_c2c
                     prnt_node_map[(nx, ny, n_theta)] = (curnt_x, curnt_y, curnt_theta)
                     step_info_map[(nx, ny, n_theta)] = (n_vel, n_theta_dot, n_dist)
+                    node_action_map[(nx, ny, n_theta)] = (act[0], act[1])
                     hq.heappush(open_list, (n_tc, n_c2c, (nx, ny, n_theta)))
         # Stop if the algorithm can't find a solution
         if len(open_list)== 0:
@@ -311,7 +318,7 @@ def draw_environment(WINDOW):
     pygame.draw.circle(WINDOW, RED, (center_x,center_y), circle_r)
     pygame.display.update()
 
-def draw_curve(surface, Xi, Yi, Thetai, UL, UR, color):
+def draw_action_curve(surface, Xi, Yi, Thetai, UL, UR, color):
     t = 0
     dt = 0.1
     Xn = Xi
@@ -331,14 +338,41 @@ def draw_curve(surface, Xi, Yi, Thetai, UL, UR, color):
     pygame.draw.lines(surface, color, False, points, 1)  # Draw on the curve surface
     return True
 
-def animate_optimal_path(window, path):  # needs to be updated to draw curves from actions using draw_curve_function. 
+# def animate_optimal_path(window, path):  # needs to be updated to draw curves from actions using draw_curve_function. 
+#     """Function to animate moving from start to goal using the optimal path"""
+#     for node in path:
+#         pygame.draw.circle(window, WHITE, (int(node[0]), int(node[1])), 2)
+#         # draw_action_curve(window, node[0], node[1], node[2], node_action_map[node][0], node_action_map[node][1], WHITE)
+#         pygame.display.update()
+#         pygame.time.delay(5)  # delay to adjust animation speed
+#     # pygame.draw.lines(window, WHITE, False, path, 2)
+
+def animate_optimal_path(window, path, node_action_rpms):
     """Function to animate moving from start to goal using the optimal path"""
-    for node in path:
-        pygame.draw.circle(window, WHITE, (int(node[0]), int(node[1])), 2)
+    curve_surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+    for i in range(len(path) - 1):
+        node = path[i]
+        next_node = path[i + 1]
+        action = node_action_rpms[i]
         
+        t = 0
+        dt = 0.1
+        Xn = node[0]
+        Yn = node[1]
+        Thetan = math.radians(node[2])
+        UL = action[0] * 2 * math.pi / 60  # convert rpm to rad/s
+        UR = action[1] * 2 * math.pi / 60  # convert rpm to rad/s
+        points = []
+        while t < 1:
+            t = t + dt
+            Xn += 0.5 * wheel_r * (UL + UR) * math.cos(Thetan) * dt
+            Yn += 0.5 * wheel_r * (UL + UR) * math.sin(Thetan) * dt
+            Thetan += (wheel_r / wheel_dist) * (UR - UL) * dt
+            points.append((int(Xn), int(Yn)))
+        pygame.draw.lines(curve_surface, WHITE, False, points, 2)  # Draw on the curve surface
+        window.blit(curve_surface, (0, 0))
         pygame.display.update()
-        pygame.time.delay(4)  # delay to adjust animation speed
-    # pygame.draw.lines(window, WHITE, False, path, 2)
+        pygame.time.delay(50)  # delay to adjust animation speed
    
 #### MAIN FUNCTION (start algorithm, then animates) ###############
 def main():
@@ -378,12 +412,13 @@ def main():
         for i in range(0, len(nodes_list), nodes_per_frame):
             for node in nodes_list[i:i+nodes_per_frame]:
                 for action in actions:
-                    if draw_curve(curve_surface, node[0], node[1], node[2], action[0], action[1], GREEN):
+                    if draw_action_curve(curve_surface, node[0], node[1], node[2], action[0], action[1], GREEN):
                         WINDOW.blit(curve_surface, (0, 0))  # Blit the curve surface onto the main window
                         pygame.display.update()
                         pygame.time.delay(dly)  # Delay between each curve
 
-        animate_optimal_path(curve_surface, path)
+        # animate_optimal_path(WINDOW, path)
+        animate_optimal_path(WINDOW, path, node_action_rpms)
         animation_end_time = time.time()
         animation_run_time = animation_end_time - animation_strt_time
         print(f"Animation Execution Time: {animation_run_time} seconds, \n")
