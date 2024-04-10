@@ -25,10 +25,8 @@ animation_v_matrix_idx = set() # set same as visited_matrix_idx but used for the
 prnt_node_map = {} # dictionary (key=node, val=parent) for all the nodes visited mapped to their parents to be used for backtracking
 lowest_c2c_map ={} # dictionary (key=node, val=c2c) to keep track of the nodes and their cost, used to ensure only lowest cost in open-list
 step_info_map = {} # dictionary (key = node, val= (linear_velocity, angular_velocity, distance_covered) to keep track of the nodes, traveled distance, linear & angular velocities
-# node_action_map = {} # dictionary (key= node, value= (rpm_l,rpm_r)) to keep track of action used be each node. Useful for drawing final path curve
 path = deque()     # deque used for storing nodes after ordering them using backtracking
 step_info = deque() # deque for storing linear_velocity, angular_velocity, distance_covered of each node for the optimal path
-# node_action_rpms = deque() # deque for storing the (RPM_L, RPM_R) actions performed to get to each node in an ordered way. Used for drawing final path curve. 
 thr_x, thr_y, thr_theta = 0.5, 0.5, 30  # x, y, theta thresholds to avoid visiting too many close points (see page 14 in project 3 part1 description pdf)        
 
 def nrm_angle(angle):
@@ -38,11 +36,11 @@ def nrm_angle(angle):
 clrnc_trigger = 1
 while clrnc_trigger == 1:
     try:
-        clrnc = float(input("Enter a value in mm between 0 and 29 (including 0 & 29) for the wall & obstacle clearance: "))/10
+        clrnc = float(input("Enter a value in mm between 0 and 29 (including 0 & 29) for the wall & obstacle clearance in mm: "))/10
     except:
         print('you did not enter a number, please enter only numbers')
         continue
-    if clrnc <0 or clrnc >29:
+    if clrnc <0 or clrnc >29/10:
         print('The value you entered is outside the acceptable range, try again')
         continue
     else:
@@ -85,7 +83,12 @@ def IsInObstacle(x, y):
     else:               # not in obstacle space
         return False
     
-def A_star(a_star_weight, strt_and_rpm_input_sw):
+def A_star(a_star_weight, strt_and_rpm_input_sw, gazebo_coord_sw):
+    """ Calculates the optimal path from a starting point to a goal point entered by the user.
+    It takes the a_star weight factor, and a number to prompt or not to input the start point & left and right wheel rpm
+    strt_and_rpm_input_sw = 1-> ask for start & rpm input, 0 = use defaults.
+    gazebo_coord_sw =1 -> convert user input in gazebo coord to pygame. gazebo_coord_sw =0 -> convert from coord on bottom left of layout to pygame coord"""
+
     global start_x, start_y
     global start_theta
     global goal_x, goal_y
@@ -100,24 +103,35 @@ def A_star(a_star_weight, strt_and_rpm_input_sw):
     if strt_and_rpm_input_sw ==1:
         while start_pt_trigger ==1:
             try:
-                start_x, startb_y, startb_theta = float(input('Enter starting point x-cordinate in mm: '))/10, float(input('Enter starting point y-cordinate in mm: ')), float(input('Enter starting theta in degrees: '))
+                startb_x, startb_y, startb_theta = float(input('Enter starting point x-cordinate in mm: '))/10, float(input('Enter starting point y-cordinate in mm: '))/10, float(input('Enter starting theta in degrees: '))
                 # worst case start wrt to coord at bottom-left corner: start (6,6), goal (1194, 162) or goal (1194, 338)
             except:
                 print('you did not enter a number, please enter only numbers')
                 continue
-            start_y = WINDOW_HEIGHT - startb_y/10 # convert from coordinate wrt to lower-left corner of display to upper left-corner coordinate
             start_theta = nrm_angle(startb_theta)
+            if gazebo_coord_sw ==0:
+                start_x = startb_x
+                start_y = WINDOW_HEIGHT - startb_y # convert from coordinate wrt to lower-left corner of display to upper left-corner coordinate
+            elif gazebo_coord_sw ==1: 
+                start_x = startb_x + 500/10 # convert gazebo-x into pygame-x 
+                start_y = - startb_y + 1000/10 # convert gazebo-y into pygame-y
+
             if IsInObstacle(start_x, start_y):
                 print('The chosen start point is in the obstacle space or too close to the border or out of the display dimensions, choose another one.')
             else:
                 start_pt_trigger = 0
     while goal_pt_trigger == 1:
         try:
-            goal_x, goalb_y = float(input('Enter goal point x- cordinate in mm: '))/10, float(input('Enter goal point y-cordinate in mm: '))
+            goalb_x, goalb_y = float(input('Enter goal point x- cordinate in mm: '))/10, float(input('Enter goal point y-cordinate in mm: '))/10
         except:
             print('you did not enter a number, please enter only numbers')
             continue
-        goal_y = WINDOW_HEIGHT - goalb_y/10  # convert from coordinate wrt to lower-left corner of display to upper left-corner coordinate
+        if gazebo_coord_sw == 0:
+            goal_x = goalb_x
+            goal_y = WINDOW_HEIGHT - goalb_y  # convert from coordinate wrt to lower-left corner of display to upper left-corner coordinate
+        elif gazebo_coord_sw ==1:
+            goal_x = goalb_x + 500/10 # convert gazebo-x into pygame-x
+            goal_y = -goalb_y +1000/10 # convert gazebo-y into pygame-y
         if IsInObstacle(goal_x, goal_y):
             print('The chosen goal point is in the obstacle space or too close to the border or out of the display dimensions, choose another one.')
             continue
@@ -137,10 +151,8 @@ def A_star(a_star_weight, strt_and_rpm_input_sw):
                 continue
             wheel_rpm_trigger = 0
 
-    # start_x, start_y, start_theta = 500/10, WINDOW_HEIGHT/2, 0
-    # goal_x, goal_y = WINDOW_WIDTH-(250/10), WINDOW_HEIGHT-1000/10
-    # goal_x, goal_y = 2900/10, WINDOW_HEIGHT-50
     a_star_strt_time = time.time()  # used to calculate how long the code runs.
+    print('starting A* search, please wait \n')
 
     def euclidean_dist(strt_x, strt_y, end_x, end_y):
         """ calculates the euclidean distance between two points.Used for c2g calculation """
@@ -161,7 +173,8 @@ def A_star(a_star_weight, strt_and_rpm_input_sw):
         return round(number*2)/2
 
     def Move(Xi,Yi,Thetai,c2c,UL,UR):
-        # robot_r = 220 # 220 mm 
+        """ Calculates the velocity, anguar speed, distance covered and new c2c. """
+        # robot_r = 220 mm or 22 cm 
         # wheel_r = 66/2 # wheel diameter = 66
         # wheel_dist = 287 # 287 mm, distance from a line through the middle of one wheel to another line through the middle of the other wheel
         t = 0
@@ -179,21 +192,14 @@ def A_star(a_star_weight, strt_and_rpm_input_sw):
         D=0
         while t<1:
             t = t + dt
-            # Xs = Xn
-            # Ys = Yn
-            # Xn += 0.5*r * (UL + UR) * math.cos(Thetan) * dt
-            # Yn += 0.5*r * (UL + UR) * math.sin(Thetan) * dt
             Xn += 0.5*wheel_r * (UL + UR) * math.cos(Thetan) * dt
             Yn += 0.5*wheel_r * (UL + UR) * math.sin(Thetan) * dt
             # Thetan += (r / L) * (UR - UL) * dt
             Thetan += (wheel_r/wheel_dist) * (UR - UL) * dt
-            # plt.plot([Xs, Xn], [Ys, Yn], color="blue")
-            # D=D+ math.sqrt(math.pow((0.5*r * (UL + UR) * math.cos(Thetan) * dt),2)+math.pow((0.5*r * (UL + UR) * math.sin(Thetan) * dt),2))
             D+= math.sqrt((0.5*wheel_r * (UL + UR) * math.cos(Thetan) * dt)**2 + (0.5*wheel_r * (UL + UR) * math.sin(Thetan) * dt)**2)
         new_c2c = c2c+D  
-        # Thetan = 180 * (Thetan) / 3.14
         Thetan = math.degrees(Thetan)
-        return round(Xn), round(Yn), round(nrm_angle(Thetan)), round(new_c2c,1), round(D,2), round(vel,2), round(theta_dot,2)
+        return round(Xn), round(Yn), round(nrm_angle(Thetan)), round(new_c2c,1), round(D,2), round(vel,4), round(theta_dot,4)
     
     # Starting cost-to-come and parent node
     cost2c_start, parent_node = 0.0, None                                                                                  
@@ -222,7 +228,7 @@ def A_star(a_star_weight, strt_and_rpm_input_sw):
         visited_matrix_idx.add((rnd2closest_pt5(curnt_x)/thr_x, rnd2closest_pt5(curnt_y)/thr_y, curnt_theta/thr_theta))
         # Check if we've reached the goal,if yes, backtrack to find path. If node is within 1.5 units of goal, then it's close enough. 
         if ((curnt_x - goal_x)**2 + (curnt_y - goal_y)**2) <= 1.5**2: #and (goal_theta-15 <= curnt_theta <= goal_theta+15):
-            print(f"Goal point {(goal_x*10, (WINDOW_HEIGHT-goal_y)*10)} reached!")
+            print(f"Goal point {(goal_x*10, (WINDOW_HEIGHT-goal_y)*10)} (in mm) reached!")
             # Backtracking
             curnt_node = (curnt_x, curnt_y, curnt_theta)
             # Keep backtracking until start node reached
@@ -233,9 +239,9 @@ def A_star(a_star_weight, strt_and_rpm_input_sw):
                 curnt_node = prnt_node_map.get(curnt_node)  # Move to the parent node to now search for its parent
             print('Path found!')
             print(f'size of path deque: {len(path)}')  # only for trouble-shotting
-            print(f'size of step_info que: {len(step_info)}')  # only for trouble-shotting
-            print(f'size of parent_node dict: {len(prnt_node_map)} \n') # only for trouble-shotting
-            print(f'size of step_info_map dict: {len(step_info_map)} \n') # only for trouble-shotting
+            # print(f'size of step_info deque: {len(step_info)}')  # only for trouble-shotting
+            # print(f'size of parent_node dict: {len(prnt_node_map)} \n') # only for trouble-shotting
+            # print(f'size of step_info_map dict: {len(step_info_map)} \n') # only for trouble-shotting
             break
         actions = ((0,RPM_L), (RPM_L,0), (RPM_L,RPM_L), (0,RPM_R), (RPM_R,0), (RPM_R,RPM_R), (RPM_L,RPM_R), (RPM_R,RPM_L))
         # Explore neighbors with 5 possible actions
@@ -289,7 +295,7 @@ wrect5 = pygame.Rect(WINDOW_WIDTH-bloat, bloat, bloat, WINDOW_HEIGHT-bloat) # ve
 wrect6 = pygame.Rect(b_rect2_x + b_rect2_w, WINDOW_HEIGHT-bloat, WINDOW_WIDTH-(b_rect2_x + b_rect2_w + bloat), bloat) #rect along bottom border from rect 2 obstacle all the way to right border.
 
 def draw_environment(WINDOW):
-    """ Draws the obstacles and background """
+    """ Draws the obstacles and background. Takes the surface display as input """
     WINDOW.fill(BACKGROUND)
     #bloat around rectangular obstacles. pygame.draw.rect(surface, colour, rectangleObject)
     pygame.draw.rect(WINDOW, YELLOW, (b_rect1_x, 0, b_rect1_w, b_rect1_l))  # 1st bloated rect obstacle on left
@@ -314,6 +320,9 @@ def draw_environment(WINDOW):
     pygame.display.update()
 
 def draw_action_curve(surface, Xi, Yi, Thetai, UL, UR, color):
+    """ Draws the action curve of the robot at each node. 
+    Takes as input: the node's x,y,theta, the left & right wheel rpm, and color.
+    Returns False is the action would lead to an obstacle point or an already visted point. Returns True otherwise"""
     t = 0
     dt = 0.1
     Xn = Xi
@@ -344,37 +353,45 @@ def animate_optimal_path(window, path):
         pygame.time.delay(100)
     pygame.draw.lines(window, WHITE, False, path_points, 1)  # Draw lines connecting each point in path
     pygame.display.update()
-    pygame.time.delay(10)  # delay for animation speed
+    pygame.time.delay(10)  # delay as needed for animation speed
 
-######################### ROS PORTION ###############################################################
-class RobotMovePubNode():
+############################################################################################
+############################## ROS PORTION #################################################
+class RobotMovePubNode(Node):
     """A class to create a publisher node to control the turtle_bot"""
 
     def __init__(self):
-        super().__init__("pose_subscriber")
-        # publisher to send velocity commands to the turtle_bot
-        self.cmd_vel_publisher_ = self.create_publisher(
-             Twist, "/cmd_vel", self.velocity_cmd_callback, 10)
-  
-    def velocity_cmd_callback(self):
+      
+        super().__init__("robot_move_pub_node")
+        
+        # Set up a publisher for sending velocity commands
+        qos_profile = QoSProfile(depth=10)
+        self.cmd_vel_publisher_ = self.create_publisher(Twist, "/cmd_vel", qos_profile)
+        self.send_movement_commands()
+
+    def send_movement_commands(self):
+        """Publishes velocity commands to the robot based on the calculated optimal path."""
         vel_cmd = Twist()
-        for waypoints in step_info:
-            vel_cmd.linear.x = float(waypoints[0]/100)  # divide by 100 to convert cm/s to m/s
-            vel_cmd.angular.z = float(waypoints[1]) # already in rad/s
+        for linear_vel, angular_vel, _ in step_info:
+            vel_cmd.linear.x = float(linear_vel / 100)  # Convert from cm/s to m/s as expected by ROS
+            vel_cmd.angular.z = float(angular_vel) # Angular velocity is already in rad/s
+            
+            # Publish the command to the robot
             self.cmd_vel_publisher_.publish(vel_cmd)
-            sleep(0.1)
+            # Delay next command
+            sleep(0.485)
 
 #### MAIN FUNCTION (start algorithm, then animates) ###############
 def main(args=None):
 # def main():
-    """ Main function to start and animate the algorithm search"""
+    """ Main function to start and animate the algorithm search. Then start the ROS publisher node"""
     global start_x, start_y
     global start_theta
     global goal_x, goal_y
     global RPM_L, RPM_R
     global clrnc
    
-    a_star_duration = A_star(1, 1)
+    a_star_duration = A_star(1, 1, 0)
 
     print(f"A* Algorithm Execution Time: {a_star_duration} seconds")
 
@@ -387,8 +404,6 @@ def main(args=None):
         pygame.display.set_caption("Robot Path Animation with A* ")
         draw_environment(WINDOW)
         pygame.draw.circle(WINDOW, WHITE, (int(goal_x), int(goal_y)), int(round(1.5)))
-        # Create a separate surface for drawing curves to avoid flickering effect if it curves were drawn directly.
-        # curve_surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA) # pygam.srcalpha keeps the surface transparent
         nodes_list = list(prnt_node_map.keys())[:-1] # slicing to avoid drawing robot motion for the last node, since after it the goal is found
         if 0<len(nodes_list)<15000:
             nodes_per_frame = int(60000/5)
@@ -405,7 +420,7 @@ def main(args=None):
         if len(nodes_list) >= 60000:
             nodes_per_frame = 60000
             dly = 0
-        # nodes_per_frame = 60000 # might need to be adjusted
+        # Loop to draw the action from several nodes in increments.    
         for i in range(0, len(nodes_list), nodes_per_frame):
             for node in nodes_list[i:i+nodes_per_frame]:
                 for action in actions:
@@ -427,30 +442,43 @@ def main(args=None):
                     animation_run_flag = False  # Set flag to False to exit loop & close display
             fpsClock.tick(FPS)
         pygame.quit() 
-        start_x, start_y, start_theta = 500/10, 1000/10, 0.0 # fixing start point to be the same as where robot spawns in gazebo
+
+        gazebo_strt_x, gazebo_strt_y, gazebo_strt_theta = 0, 0, 0.0# in gazebo coordinates # point (in gazebo coord system) where robot spawns in gazebo
+        start_x = (gazebo_strt_x + 500)/10 # convert gazebo-x into pygame-x then convert to cm
+        start_y = (- gazebo_strt_y + 1000)/10 # convert gazebo-y into pygame-y then convert to cm
+        start_theta = nrm_angle(gazebo_strt_theta)
         RPM_L, RPM_R = 22, 22
-        clrnc = 29
-        goal_x, goal_y = 5750/10, 1000/10
+        clrnc = 29/10
+        # goal_x, goal_y = 5750/10, WINDOW_HEIGHT-1000/10
 
         open_list.clear()  # purging list used for heapq for nodes in the open-list
-        visited_matrix_idx.clear() #set used to store the index of each visited node if they were added to a visted-node-matrix (see proj3 part 1 pdf page 14). replaces the closed-list from proj2
-        prnt_node_map.clear() # clearing dictionary (key=node, val=parent) for all the nodes visited mapped to their parents to be used for backtracking
-        lowest_c2c_map.clear() # clearing dictionary (key=node, val=c2c) to keep track of the nodes and their cost, used to ensure only lowest cost in open-list
-        step_info_map.clear() # purging dictionary (key = node, val= (linear_velocity, angular_velocity, distance_covered) to keep track of the nodes, traveled distance, linear & angular velocities
-        path.clear()          # deque used for storing nodes after ordering them using backtracking
-        step_info.clear()     # clearing deque
-        
-        A_star(1,0)  # using A_star to find optimal path for robot in gazebo world
-        step_info.append((0.0,0.0))
+        visited_matrix_idx.clear() # purging set used to store the index of each visited node if they were added to a visted-node-matrix (see proj3 part 1 pdf page 14). replaces the closed-list from proj2
+        prnt_node_map.clear() # clearing -dictionary (key=node, val=parent) for all the nodes visited mapped to their parents to be used for backtracking
+        lowest_c2c_map.clear() # clearing -dictionary (key=node, val=c2c) to keep track of the nodes and their cost, used to ensure only lowest cost in open-list
+        step_info_map.clear() # purging -dictionary (key = node, val= (linear_velocity, angular_velocity, distance_covered) to keep track of the nodes, traveled distance, linear & angular velocities
+        path.clear()          # deque -used for storing nodes after ordering them using backtracking
+        step_info.clear()     # clearing -deque
+        # need to add timmer hear to track a_star duration
+        print('please enter goal point in mm in the coordinate systems of the gazebo robot')
+        print('for example, enter goal_x=5250, goal_y= 0, to reach the point that would be (5750, 1000) in the coordinate at the bottom left corner of the layout in the pdf \n')
+        a_star_gazebo_strt = time.time()
+        A_star(1,0,1)  # using A_star to find optimal path for robot in gazebo world. 1= regular A*, 0= don't ask for start & rpm, 1=convert gazebo goal input to pygame. 
+        a_star_gazebo_end = time.time()
+        print(f'a_star for gazebo/ros duration{a_star_gazebo_end- a_star_gazebo_strt} \n')
+        # need to add condition to stop program is a_star failed to find path. 
+        step_info.append((0.0,0.0, 0.0)) # used at the end to force the robot to stop once the goal has been reached
         print('starting ROS commands to move robot in gazebo')
         # print('start_x, start_y, start_theta=: ', start_x, start_y, start_theta)
         # print('goal_x, goaly =:', goal_x, goal_y)
-        # print(f'size of step_info: {len(step_info)}')
-        # print('50th item and 101 item in step_info', step_info[49], step_info[100])
+        # print(f'size of step_info: {len(step_info)}') # used for debugging
+        # print('lin_velocity & angular velocity before last: ', step_info[len(step_info)-2], '\n') # used for debugging
+        # print('50th item and 101 item in step_info', step_info[49], step_info[100]) # used for debugging
+
         # Initialize and run the node
         rclpy.init(args=args)
         node = RobotMovePubNode()
         print('initialization complete, spinning the node')
+        # try/except used to gracefully end the node when the user stops it from the terminal using ctrl+C
         try:
             rclpy.spin(node)
         except KeyboardInterrupt:
